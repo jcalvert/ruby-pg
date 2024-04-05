@@ -648,11 +648,12 @@ class PG::Connection
 			host_count = conninfo_hash[:host].to_s.count(",") + 1
 			stop_time = timeo * host_count + Process.clock_gettime(Process::CLOCK_MONOTONIC)
 		end
-
 		poll_status = PG::PGRES_POLLING_WRITING
+    @fileno = socket_io.fileno
 		until poll_status == PG::PGRES_POLLING_OK ||
 				poll_status == PG::PGRES_POLLING_FAILED
 
+      puts "?? #{socket_io.fileno} -in poll- #{@fileno}" if socket_io.fileno != @fileno
 			# Set single timeout to parameter "connect_timeout" but
 			# don't exceed total connection time of number-of-hosts * connect_timeout.
 			timeout = [timeo, stop_time - Process.clock_gettime(Process::CLOCK_MONOTONIC)].min if stop_time

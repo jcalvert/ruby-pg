@@ -516,7 +516,9 @@ pgconn_connect_poll(VALUE self)
 {
 	PostgresPollingStatusType status;
 	status = gvl_PQconnectPoll(pg_get_pgconn(self));
-
+// Closing here is a problem because PQconnectPoll may have
+// already closed the socket letting the kernel recycle the fd
+// so that another thread picks it up
 	pgconn_close_socket_io(self);
 
 	return INT2FIX((int)status);

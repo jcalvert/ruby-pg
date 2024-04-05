@@ -222,6 +222,7 @@ module PG::TestingHelpers
 		# tmp_test_0.22329534700318
 		pat = Pathname.getwd + 'tmp_test_*'
 		Pathname.glob( pat.to_s ).each do |testdir|
+      puts "?? #{testdir}"
 			datadir = testdir + 'data'
 			pidfile = datadir + 'postmaster.pid'
 			if pidfile.exist? && pid = pidfile.read.chomp.to_i
@@ -238,6 +239,19 @@ module PG::TestingHelpers
 			else
 				trace "No pidfile (%p)" % [ pidfile ]
 			end
+      pidfile = testdir + 'pgbouncer.pid'
+      puts "WU? #{pidfile}"
+      if pidfile.exist? && pid = pidfile.read.chomp.to_i
+        trace "pidfile (%p) exists: %d" % [ pidfile, pid ]
+        begin
+          puts "killing #{pid}"
+          Process.kill('QUIT', pid )
+        rescue Errno::ESRCH
+          puts "WUUUUUPA"
+        end
+      else
+        puts 'could not read pid file'
+      end
 		end
 	end
 
@@ -295,6 +309,22 @@ EOT
 					generate_ssl_certs(@test_pgdata.to_s)
 				end
 
+        unless (@test_dir+"pgbouncer.ini").exist?
+          File.open(@test_dir+"pgbouncer.ini", "a+") do |fd|
+            fd.puts <<-EOT
+ [databases]
+ test = host=localhost port=#{@port} dbname=test
+
+ [pgbouncer]
+ listen_port = #{@port+1}
+ listen_addr = localhost
+ auth_type = any
+ pidfile = #{@test_dir}/pgbouncer.pid
+EOT
+          end
+        end
+        log_and_run @logfile, "pgbouncer", "-d", @test_dir.to_s+"/pgbouncer.ini"
+
 				trace "Starting postgres"
 				sopt = "-p #{@port}"
 				sopt += " -k #{@test_dir.to_s.dump}" unless RUBY_PLATFORM=~/mingw|mswin/i
@@ -304,7 +334,10 @@ EOT
 
 				td = @test_pgdata
 				@conninfo = "host=localhost port=#{@port} dbname=test sslrootcert=#{td + 'ruby-pg-ca-cert'} sslcert=#{td + 'ruby-pg-client-cert'} sslkey=#{td + 'ruby-pg-client-key'}"
+
+
 				@unix_socket = @test_dir.to_s
+
 			rescue => err
 				$stderr.puts "%p during test setup: %s" % [ err.class, err.message ]
 				$stderr.puts "See #{@logfile} for details:"
@@ -351,6 +384,17 @@ EOT
 			trace "Tearing down test database for #{@name}"
 
 			log_and_run @logfile, pg_bin_path('pg_ctl'), '-D', @test_pgdata.to_s, '-m', 'fast', 'stop'
+      pat = Pathname.getwd + 'tmp_test_*'
+      Pathname.glob( pat.to_s ).each do |testdir|
+        pidfile = testdir + '/pgbouncer.pid'
+        if pidfile.exist? && pid = pidfile.read.chomp.to_i
+          trace "pidfile (%p) exists: %d" % [ pidfile, pid ]
+          begin
+            Process.kill( 0, pid )
+          rescue Errno::ESRCH
+          end
+        end
+      end
 		end
 
 		def pg_bin_path(cmd)

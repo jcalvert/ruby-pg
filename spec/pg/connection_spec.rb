@@ -567,7 +567,10 @@ describe PG::Connection do
 			# Connect with SSL, but use a wrong client cert, so that connection is aborted.
 			# A second connection is then started with a new IO.
 			# And since the pipes above were freed in the concurrent thread above, there is a high chance that it's a lower file descriptor than before.
-			conn = PG.connect( @conninfo + " sslcert=tmp_test_specs/data/ruby-pg-ca-cert" )
+      100.times.map do
+
+        Thread.new {
+      conn = PG.connect( @conninfo + " sslcert=tmp_test_specs/data/ruby-pg-ca-cert" )
 			expect( conn.ssl_in_use? ).to be_falsey
 
 			# The new connection should work even when the file descriptor has changed.
@@ -575,7 +578,9 @@ describe PG::Connection do
 			expect( res.values ).to eq([["1"]])
 
 			conn.close
-		end
+        }
+      end.each(&:join)
+    end
 
 		it "can use conn.reset_start to restart the connection" do
 			ios = IO.pipe
@@ -2790,4 +2795,24 @@ describe PG::Connection do
 				.to raise_error(TypeError)
 		end
 	end
+
+  describe "multiple threaded connections" do
+    it "should not end up with closed threads" do
+      puts "#{@conninfo}"
+      10.times do |i|
+       # puts i
+        100.times.map do
+          Thread.new do
+            100.times do
+              conn = described_class.open( @conninfo )#.gsub(@port.to_s, (@port+1).to_s))#host: "localhost", port: @port+1, dbname: "test" )
+              conn.connect_poll
+              conn.close
+            end
+       #     puts "Closing #{conn.socket_io.fileno} on #{Thread.current.object_id}"
+#            conn.close
+          end
+        end.map(&:join)
+      end
+    end
+  end
 end
